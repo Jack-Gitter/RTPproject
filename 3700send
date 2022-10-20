@@ -14,11 +14,12 @@ class Sender:
         self.socket.bind(('0.0.0.0', 0))
         self.waiting = False
 
-        self.window_size = 2 # max number of packets that can be out in the network
+        self.window_size = 1 # max number of packets that can be out in the network
         self.out_packets = 0 # number of packets out in the network from sender
         self.receiver_sn = 0 # receiver sequence number
         self.sender_sn = 0; # sender sequence number
-        self.ack_number = 0; # used to monitor duplicate acks
+        self.data_number = 0
+        self.ack_numbers = []; # used to monitor duplicate acks
 
     def log(self, message):
         sys.stderr.write(message + "\n")
@@ -38,9 +39,9 @@ class Sender:
                     json_msg = json.loads(msg)
 
                     # If the ack we have received is not a duplicate
-                    if json_msg['id'] == self.ack_number: 
+                    if json_msg['id'] not in self.ack_numbers: 
                         self.log("Received message '%s'" % msg)
-                        self.ack_number+=1
+                        self.ack_numbers.append(json_msg['id'])
                         self.out_packets-=1
                         self.waiting = False
 
@@ -53,9 +54,10 @@ class Sender:
 
                     # increase the sequence number of the message accordingly and send message
                     self.sender_sn += len(data.encode('utf-8'))
-                    msg = { "type": "msg", "data": data, "sn": self.sender_sn}
+                    msg = { "type": "msg", "data": data, "sn": self.sender_sn, "id": self.data_number}
                     self.log("Sending message '%s'" % msg)
                     self.send(msg)
+                    self.data_number+=1
                     self.out_packets+=1
 
                     # check if we have the max amount of packets out in the network

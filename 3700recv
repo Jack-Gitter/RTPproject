@@ -1,6 +1,6 @@
 #!/usr/bin/env -S python3 -u
 
-import argparse, socket, time, json, select, struct, sys, math
+import argparse, socket, time, json, select, struct, sys, math, queue
 
 class Receiver:
     
@@ -13,6 +13,9 @@ class Receiver:
         self.sender_sn = 0; # sender sequence number
         self.receiver_sn = 0; # receiver sequence number 
         self.ack_id = 0 # ack number 
+        self.received_data = []
+
+        self.data_buffer = queue.PriorityQueue()
 
         self.remote_host = None
         self.remote_port = None
@@ -39,16 +42,24 @@ class Receiver:
                 # load the message received 
                 msg = json.loads(data.decode('utf-8'))
 
-                # check to see if the message is received in order and print
-                if (len(msg['data'].encode('utf-8')) + self.sender_sn) == msg['sn']: 
-                    self.log("Received data message %s" % msg)
-                    self.sender_sn = msg['sn']
-                    print(msg["data"], end='', flush=True)
+                if msg['id'] not in self.received_data:
 
-                
-                # send an ack back regardless 
-                self.send({ "type": "ack", "sn": msg['sn'], "id":self.ack_id})
-                self.ack_id+=1
+                    self.received_data.append(msg['id'])
+
+                    self.data_buffer.put((msg['sn'], msg))
+
+                    # if this is true, then we want to pop the item, and loop thru the q like that
+                    while(len(self.data_buffer.queue[0][1]['data'].encode('utf-8')) + self.sender_sn == self.data_buffer.queue[0][1]['sn']):
+                        data = self.data_buffer.get()[1]
+                        self.log('printing data with sn ' + str(data['sn']))
+                        self.sender_sn = data['sn'] 
+                        self.log("Received data message %s" % data['data'])
+                        print(data['data'], end='', flush=True)
+                        if self.data_buffer.qsize() <= 0:
+                            break
+
+                    self.send({ "type": "ack", "sn": msg['sn'], "id":self.ack_id})
+                    self.ack_id+=1
 
         return
 
@@ -58,6 +69,3 @@ if __name__ == "__main__":
     sender = Receiver()
     sender.run()
 
-
-                #if (len(msg['data'].encode('utf-8')) + self.sender_sn) >= msg['sn']: 
-                    # if its greater than or equal to, then we want to add the message to a buffer. Then loop the buffer and see if we can send anything

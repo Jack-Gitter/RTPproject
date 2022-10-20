@@ -14,7 +14,7 @@ class Sender:
         self.socket.bind(('0.0.0.0', 0))
         self.waiting = False
 
-        self.window_size = 1 # max number of packets that can be out in the network
+        self.window_size = 4 # max number of packets that can be out in the network
         self.out_packets = 0 # number of packets out in the network from sender
         self.receiver_sn = 0 # receiver sequence number
         self.sender_sn = 0; # sender sequence number
@@ -32,6 +32,7 @@ class Sender:
         while True:
             sockets = [self.socket, sys.stdin] if not self.waiting else [self.socket]
             socks = select.select(sockets, [], [], 0.1)[0]
+            # its getting there, we're not waiting long enough for an ack back, then no connection or something?
             for conn in socks:
                 if conn == self.socket:
                     k, addr = conn.recvfrom(65535)
@@ -43,26 +44,50 @@ class Sender:
                         self.log("Received message '%s'" % msg)
                         self.ack_numbers.append(json_msg['id'])
                         self.out_packets-=1
+                        self.log("out packets are --------------- " + str(self.out_packets))
                         self.waiting = False
 
                 elif conn == sys.stdin:
                     data = sys.stdin.read(DATA_SIZE)
 
-                    if len(data) == 0:
+                    if len(data) == 0: # if the length of data is zero, then ensure that we have everything back. if not, set waiting to true, and only set waiting to false 
+                        if self.out_packets != 0:
+                            self.waiting = True
+                            break
                         self.log("All done!")
                         sys.exit(0)
 
+
+                    # sender sends data message 1
+                    # sender sends data message 2
+                    # receiver sends ack 1 back
+                    # then sender can now send a new message, sends the ending message ""
+                    # receiver cannot send the ack back, as the program has terminated
+
+                    # the sender closes, but still needs to listen for data
+
                     # increase the sequence number of the message accordingly and send message
+                    #self.log('important ------------------------')
+                    #self.log(str(len(self.ack_numbers)))
+                    #self.log(str(self.data_number))
+
                     self.sender_sn += len(data.encode('utf-8'))
                     msg = { "type": "msg", "data": data, "sn": self.sender_sn, "id": self.data_number}
                     self.log("Sending message '%s'" % msg)
+
                     self.send(msg)
                     self.data_number+=1
                     self.out_packets+=1
+                    self.log("out packets are --------------- " + str(self.out_packets))
+
+
+
+                    #if len(self.ack_numbers)-1 == self.data_number: 
 
                     # check if we have the max amount of packets out in the network
                     if self.out_packets == self.window_size:
                         self.waiting = True
+                        
 
         return
 

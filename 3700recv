@@ -58,6 +58,7 @@ class Receiver:
                         if self.data_buffer.qsize() <= 0:
                             break
 
+                    # somehow regulate the amount of acks we send back
                     self.send({ "type": "ack", "sn": msg['sn'], "id":self.ack_id})
                     self.ack_id+=1
 

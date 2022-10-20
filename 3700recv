@@ -9,11 +9,14 @@ class Receiver:
         self.socket.bind(('0.0.0.0', 0))
         self.port = self.socket.getsockname()[1]
         self.log("Bound to port %d" % self.port)
-        self.sender_sn = 0;
-        self.sn = 0;
-        self.ack_id = 0
+
+        self.sender_sn = 0; # sender sequence number
+        self.receiver_sn = 0; # receiver sequence number 
+        self.ack_id = 0 # ack number 
+
         self.remote_host = None
         self.remote_port = None
+
 
     def send(self, message):
         self.socket.sendto(json.dumps(message).encode('utf-8'), (self.remote_host, self.remote_port))
@@ -33,18 +36,20 @@ class Receiver:
                     self.remote_host = addr[0]
                     self.remote_port = addr[1]
 
+                # load the message received 
                 msg = json.loads(data.decode('utf-8'))
 
+                # check to see if the message is received in order and print
                 if (len(msg['data'].encode('utf-8')) + self.sender_sn) == msg['sn']: 
                     self.log("Received data message %s" % msg)
                     self.sender_sn = msg['sn']
                     print(msg["data"], end='', flush=True)
 
                 
-                self.send({ "type": "ack", "sender_sn": msg['sn'], "id":self.ack_id})
+                # send an ack back regardless 
+                self.send({ "type": "ack", "sn": msg['sn'], "id":self.ack_id})
                 self.ack_id+=1
-                #else:
-                    #self.log("message not proccessed with sn num: %s" % msg['sn'])
+
         return
 
 if __name__ == "__main__":

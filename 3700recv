@@ -10,7 +10,8 @@ class Receiver:
         self.port = self.socket.getsockname()[1]
         self.log("Bound to port %d" % self.port)
         self.sender_sn = 0;
-
+        self.sn = 0;
+        self.ack_id = 0
         self.remote_host = None
         self.remote_port = None
 
@@ -33,16 +34,17 @@ class Receiver:
                     self.remote_port = addr[1]
 
                 msg = json.loads(data.decode('utf-8'))
-                
-                self.log("message %s has arrived but has no guarentee of being processed" % msg['sn'])
 
-                if (len(msg['data'].encode('utf-8')) + self.sender_sn) == msg['sn']:
-                    self.log("msg processed!")
+                if (len(msg['data'].encode('utf-8')) + self.sender_sn) == msg['sn']: 
                     self.log("Received data message %s" % msg)
                     self.sender_sn = msg['sn']
-                    # Print out the data to stdout
                     print(msg["data"], end='', flush=True)
-                    self.send({ "type": "ack", "sender_sn": msg['sn']})
+
+                
+                self.send({ "type": "ack", "sender_sn": msg['sn'], "id":self.ack_id})
+                self.ack_id+=1
+                #else:
+                    #self.log("message not proccessed with sn num: %s" % msg['sn'])
         return
 
 if __name__ == "__main__":
@@ -52,3 +54,5 @@ if __name__ == "__main__":
     sender.run()
 
 
+                #if (len(msg['data'].encode('utf-8')) + self.sender_sn) >= msg['sn']: 
+                    # if its greater than or equal to, then we want to add the message to a buffer. Then loop the buffer and see if we can send anything

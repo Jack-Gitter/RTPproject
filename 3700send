@@ -28,6 +28,31 @@ class Sender:
     def send(self, message):
         self.socket.sendto(json.dumps(message).encode('utf-8'), (self.host, self.remote_port))
 
+    def ensure_all_acks_received(self, data):
+        if len(data) == 0:
+            if self.out_packets != 0:
+                self.waiting = True
+                return True
+            self.log("All done!")
+            sys.exit(0)
+
+    def process_ack(self, msg):
+        json_msg = json.loads(msg)
+        if json_msg['id'] not in self.ack_numbers: 
+            self.log("Received message '%s'" % msg)
+            self.ack_numbers.append(json_msg['id'])
+            self.out_packets-=1
+            self.waiting = False
+
+    def send_msg(self, data):
+        self.sender_sn += len(data.encode('utf-8'))
+        msg = { "type": "msg", "data": data, "sn": self.sender_sn, "id": self.data_number}
+        self.log("Sending message '%s'" % msg)
+
+        self.send(msg)
+        self.data_number+=1
+        self.out_packets+=1
+
     def run(self):
         while True:
             sockets = [self.socket, sys.stdin] if not self.waiting else [self.socket]
@@ -37,57 +62,21 @@ class Sender:
                 if conn == self.socket:
                     k, addr = conn.recvfrom(65535)
                     msg = k.decode('utf-8')
-                    json_msg = json.loads(msg)
 
                     # If the ack we have received is not a duplicate
-                    if json_msg['id'] not in self.ack_numbers: 
-                        self.log("Received message '%s'" % msg)
-                        self.ack_numbers.append(json_msg['id'])
-                        self.out_packets-=1
-                        self.log("out packets are --------------- " + str(self.out_packets))
-                        self.waiting = False
+                    self.process_ack(msg)
 
                 elif conn == sys.stdin:
+
                     data = sys.stdin.read(DATA_SIZE)
 
-                    if len(data) == 0: # if the length of data is zero, then ensure that we have everything back. if not, set waiting to true, and only set waiting to false 
-                        if self.out_packets != 0:
-                            self.waiting = True
-                            break
-                        self.log("All done!")
-                        sys.exit(0)
+                    if self.ensure_all_acks_received(data):
+                        break
 
-
-                    # sender sends data message 1
-                    # sender sends data message 2
-                    # receiver sends ack 1 back
-                    # then sender can now send a new message, sends the ending message ""
-                    # receiver cannot send the ack back, as the program has terminated
-
-                    # the sender closes, but still needs to listen for data
-
-                    # increase the sequence number of the message accordingly and send message
-                    #self.log('important ------------------------')
-                    #self.log(str(len(self.ack_numbers)))
-                    #self.log(str(self.data_number))
-
-                    self.sender_sn += len(data.encode('utf-8'))
-                    msg = { "type": "msg", "data": data, "sn": self.sender_sn, "id": self.data_number}
-                    self.log("Sending message '%s'" % msg)
-
-                    self.send(msg)
-                    self.data_number+=1
-                    self.out_packets+=1
-                    self.log("out packets are --------------- " + str(self.out_packets))
-
-
-
-                    #if len(self.ack_numbers)-1 == self.data_number: 
-
-                    # check if we have the max amount of packets out in the network
+                    self.send_msg(data)
+                    
                     if self.out_packets == self.window_size:
                         self.waiting = True
-                        
 
         return
 

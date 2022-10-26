@@ -73,8 +73,6 @@ class Sender:
     def send_msg(self, data):
         self.sender_sn += len(data.encode('utf-8'))
         msg = { "type": "msg", "data": data, "sn": self.sender_sn, "id": self.data_number}
-        check_sum = self.generate_checksum(msg)
-        msg['checksum'] = check_sum
         self.log("Sending message '%s'" % msg)
 
         self.send(msg)
@@ -83,14 +81,10 @@ class Sender:
 
     def add_to_queue(self, data):
         msg = { "type": "msg", "data": data, "sn": self.sender_sn, "id": self.data_number}
-        check_sum = self.generate_checksum(msg)
-        msg['checksum'] = check_sum
         self.window.put((msg['sn'], msg))
 
     def add_to_time_dict(self, data):
         msg = { "type": "msg", "data": data, "sn": self.sender_sn, "id": self.data_number, "time": time.time()}
-        check_sum = self.generate_checksum(msg)
-        msg['checksum'] = check_sum
         self.time_window[msg['sn']] = msg
 
     def is_packet_loss_ack(self, ack):
@@ -121,28 +115,13 @@ class Sender:
         self.data_number+=1
         
         normal_msg = { "type": msg['type'], "data": msg['data'], "sn": msg['sn'], "id": self.data_number}
-        check_sum = self.generate_checksum(normal_msg)
-        normal_msg['checksum'] = check_sum
 
-        time_msg = { "type": msg['type'], "data": msg['data'], "sn": msg['sn'], "id": self.data_number, "time": time.time(), "checksum": check_sum}
+        time_msg = { "type": msg['type'], "data": msg['data'], "sn": msg['sn'], "id": self.data_number, "time": time.time()}
         self.time_window[msg['sn']] = time_msg
 
         self.log("Sending message '%s'" % normal_msg)
         self.send(normal_msg)
 
-    # also ignore time and checksum fields
-    def generate_checksum(self, msg):
-        check_sum = 0
-        for key, value in msg.items():
-            if key == 'checksum' or key == 'time':
-                continue
-            elif type(value) is int:
-                check_sum += value
-            else:
-                value = value.encode('utf-8')
-                for char in value:
-                    check_sum += char
-        return check_sum
 
 
 # need to encode a checksum into the acks as well, pretty much just the same way we are doing here

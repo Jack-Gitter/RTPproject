@@ -42,12 +42,15 @@ class Receiver:
 
     def process_msgs_in_order(self):
         msg = self.data_buffer.queue[0][1]
-        if len(msg['data'].encode('utf-8')) + self.sender_sn == msg['sn']:
+        while(len(msg['data'].encode('utf-8')) + self.sender_sn == msg['sn']):
             msg = self.data_buffer.get()[1]
             self.log('printing data with sn ' + str(msg['sn']))
             self.sender_sn = msg['sn'] 
             self.log("Received data message %s" % msg['data'])
             print(msg['data'], end='', flush=True)
+            if self.data_buffer.qsize() <= 0:
+                break
+            msg = self.data_buffer.queue[0][1]
 
     def check_and_put_data(self, msg):
         for tup in self.data_buffer.queue:
@@ -67,36 +70,12 @@ class Receiver:
             print(msg['data'], end='', flush=True)
 
 
-    def is_packet_corrupted(self, data):
-        check_sum = 0
-        msg = json.loads(data.decode('utf-8'))
-        for key, value in msg.items():
-            if key == 'checksum':
-                continue
-            elif type(value) is int:
-                check_sum += value
-            else:
-                value = value.encode('utf-8')
-                for char in value:
-                    check_sum += char
-
-        return check_sum != msg['checksum']
-
-    def is_corrupted_JSON(self, ack):
-        try:
-            json.loads(ack)
-        except:
-            return True
-        return False
-
     def run(self):
         while True:
             socks = select.select([self.socket], [], [])[0]
             for conn in socks:
                 data, addr = conn.recvfrom(65535)
 
-                if (self.is_corrupted_JSON(data) or self.is_packet_corrupted(data)):
-                    continue
                 # Grab the remote host/port if we don't alreadt have it
                 self.grab_remote_host(addr)
 
@@ -106,9 +85,6 @@ class Receiver:
                 if msg['id'] not in self.received_data:
 
                     self.received_data.append(msg['id'])
-
-                    #self.log("the result of this packet corrupt check is ----------------------")
-                    #self.log(str(self.is_packet_corrupted(data)))
 
                     #self.check_and_put_data(msg)
 

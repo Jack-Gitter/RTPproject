@@ -42,15 +42,12 @@ class Receiver:
 
     def process_msgs_in_order(self):
         msg = self.data_buffer.queue[0][1]
-        while(len(msg['data'].encode('utf-8')) + self.sender_sn == msg['sn']):
+        if len(msg['data'].encode('utf-8')) + self.sender_sn == msg['sn']:
             msg = self.data_buffer.get()[1]
             self.log('printing data with sn ' + str(msg['sn']))
             self.sender_sn = msg['sn'] 
             self.log("Received data message %s" % msg['data'])
             print(msg['data'], end='', flush=True)
-            if self.data_buffer.qsize() <= 0:
-                break
-            msg = self.data_buffer.queue[0][1]
 
     def check_and_put_data(self, msg):
         for tup in self.data_buffer.queue:
@@ -74,9 +71,7 @@ class Receiver:
         check_sum = 0
         msg = json.loads(data.decode('utf-8'))
         for key, value in msg.items():
-            self.log("we are processing '%s'" % key)
             if key == 'checksum':
-                self.log("we have ignored the checksum")
                 continue
             elif type(value) is int:
                 check_sum += value
@@ -85,8 +80,14 @@ class Receiver:
                 for char in value:
                     check_sum += char
 
-        self.log("the calculated checksum for the packet the receiver has received with sn:  " + str(msg['sn']) + "is " + str(check_sum))
-        return check_sum == msg['checksum']
+        return check_sum != msg['checksum']
+
+    def is_corrupted_JSON(self, ack):
+        try:
+            json.loads(ack)
+        except:
+            return True
+        return False
 
     def run(self):
         while True:
@@ -94,6 +95,8 @@ class Receiver:
             for conn in socks:
                 data, addr = conn.recvfrom(65535)
 
+                if (self.is_corrupted_JSON(data) or self.is_packet_corrupted(data)):
+                    continue
                 # Grab the remote host/port if we don't alreadt have it
                 self.grab_remote_host(addr)
 
@@ -104,10 +107,8 @@ class Receiver:
 
                     self.received_data.append(msg['id'])
 
-
-                    self.log("the result of this packet corrupt check is ----------------------")
-                    self.log(str(self.is_packet_corrupted(data)))
-
+                    #self.log("the result of this packet corrupt check is ----------------------")
+                    #self.log(str(self.is_packet_corrupted(data)))
 
                     #self.check_and_put_data(msg)
 

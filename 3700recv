@@ -28,7 +28,11 @@ class Receiver:
         sys.stderr.flush()
 
     def send_ack(self, msg):
-        self.send({ "type": "ack", "sn": msg['sn'], "id":self.ack_id})
+        if len(msg['data'].encode('utf-8')) + self.sender_sn == msg['sn']:
+            self.send({ "type": "ack", "sn": msg['sn'], "id":self.ack_id})
+        else:
+            self.send({ "type": "ack", "sn": self.sender_sn, "id":self.ack_id})
+
         self.ack_id+=1
 
     def grab_remote_host(self, addr):
@@ -48,6 +52,24 @@ class Receiver:
                 break
             msg = self.data_buffer.queue[0][1]
 
+    def check_and_put_data(self, msg):
+        for tup in self.data_buffer.queue:
+            for key, value in tup:
+                if key == 'id':
+                    continue
+                if msg[key] != value:
+                    return 
+
+        self.data_buffer.put((msg['sn'], msg))
+
+
+    def check_and_print(self, msg):
+        if len(msg['data'].encode('utf-8')) + self.sender_sn == msg['sn']:
+            self.sender_sn = msg['sn'] 
+            self.log("Received data message %s" % msg['data'])
+            print(msg['data'], end='', flush=True)
+
+
     def run(self):
         while True:
             socks = select.select([self.socket], [], [])[0]
@@ -62,11 +84,14 @@ class Receiver:
 
                 if msg['id'] not in self.received_data:
 
+                    self.log("we have received a data message!")
+
                     self.received_data.append(msg['id'])
 
-                    self.data_buffer.put((msg['sn'], msg))
+                    #self.check_and_put_data(msg)
 
-                    self.process_msgs_in_order()
+                    #self.process_msgs_in_order()
+                    self.check_and_print(msg)
 
                     # somehow regulate the amount of acks we send back
                     self.send_ack(msg)

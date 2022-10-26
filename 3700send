@@ -1,6 +1,28 @@
 #!/usr/bin/env -S python3 -u
 
-import argparse, socket, time, json, select, struct, sys, math
+import argparse, socket, time, json, select, struct, sys, math, queue
+
+# -- receiver sends an ack for every single data message it gets
+# -- receiver keeps a window of data messages Received
+# -- the receiver only adds messages to the window if they are unique messages 
+# -- the receiver prints out the messages when the first thing in the window is expected
+
+# -- sender keeps track of the unackd messages
+# -- if the sender receives an ack for the message at the bottom of the window it moves window 
+# -- if the sender receives an ack for previous message, resend the bottom of the window IF 
+# -- the bottom of the window's message time has expired
+
+# -- also check every .5 seconds or whatever to see if the messages in the window have expired
+# -- if they have expired, then we want to resend all of the ones that have expired and 
+# -- reset their time to the current time
+
+
+
+
+
+# -- sender 
+
+# -- when getting an ack, determine if it is for the thing in the bottom of the window. if it is, slide the window forward, if it isn't, dont do anything
 
 # Effectively packet size that we are going to be sending
 DATA_SIZE = 1375
@@ -15,11 +37,13 @@ class Sender:
         self.waiting = False
 
         self.window_size = 4 # max number of packets that can be out in the network
-        self.out_packets = 0 # number of packets out in the network from sender
+        self.num_out_packets = 0 # number of packets out in the network from sender
         self.receiver_sn = 0 # receiver sequence number
         self.sender_sn = 0; # sender sequence number
         self.data_number = 0
         self.ack_numbers = []; # used to monitor duplicate acks
+        self.window = queue.PriorityQueue()
+        self.time_window = {}
 
     def log(self, message):
         sys.stderr.write(message + "\n")
@@ -30,18 +54,21 @@ class Sender:
 
     def ensure_all_acks_received(self, data):
         if len(data) == 0:
-            if self.out_packets != 0:
+            if self.num_out_packets != 0:
                 self.waiting = True
                 return True
             self.log("All done!")
             sys.exit(0)
 
-    def process_ack(self, msg):
+
+    def advance_window_if_unique(self, msg):
         json_msg = json.loads(msg)
         if json_msg['id'] not in self.ack_numbers: 
+            tup = self.window.get()
+            del self.time_window[tup[1]['sn']]
             self.log("Received message '%s'" % msg)
             self.ack_numbers.append(json_msg['id'])
-            self.out_packets-=1
+            self.num_out_packets-=1
             self.waiting = False
 
     def send_msg(self, data):
@@ -51,7 +78,38 @@ class Sender:
 
         self.send(msg)
         self.data_number+=1
-        self.out_packets+=1
+        self.num_out_packets+=1
+
+    def add_to_queue(self, data):
+        msg = { "type": "msg", "data": data, "sn": self.sender_sn, "id": self.data_number}
+        self.window.put((msg['sn'], msg))
+
+    def add_to_time_dict(self, data):
+        msg = { "type": "msg", "data": data, "sn": self.sender_sn, "id": self.data_number, "time": time.time()}
+        self.time_window[msg['sn']] = msg
+
+    def is_packet_loss_ack(self, ack):
+        json_ack = json.loads(ack)
+        return json_ack['sn'] < self.window.queue[0][0]
+
+    def check_RTO_and_resend(self):
+        for sn, data_msg in list(self.time_window.items()):
+            if time.time() - data_msg['time'] > 2:
+                self.log("the data message with sn: " + str(data_msg['sn']) + "'s RTO time has expired. That time was " + str(data_msg['time']))
+                self.resend_data(data_msg)
+        return
+
+    def resend_data(self, msg):
+        # remove it from the time window and add it again with new current time
+        # do not change the out packets or self.waiting values at all
+        del self.time_window[msg['sn']]
+        self.data_number+=1
+        time_msg = { "type": msg['type'], "data": msg['data'], "sn": msg['sn'], "id": self.data_number, "time": time.time()}
+        self.time_window[msg['sn']] = time_msg
+        self.log("Sending message '%s'" % msg)
+        self.send(msg)
+        #self.log("we have replaced the data message with sn: " + str(msg['sn']) + " 's time with with " + str(time.time()))
+
 
     def run(self):
         while True:
@@ -63,8 +121,13 @@ class Sender:
                     k, addr = conn.recvfrom(65535)
                     msg = k.decode('utf-8')
 
-                    # If the ack we have received is not a duplicate
-                    self.process_ack(msg)
+                    if not self.is_packet_loss_ack(msg):
+                        self.advance_window_if_unique(msg) 
+
+                    self.log("we have processed an ack and our sender window is as follows")
+                    for tup in self.window.queue:
+                        self.log("sn: " + str(tup[0]))
+                        self.log("time: " + str(self.time_window[tup[1]['sn']]['time']))
 
                 elif conn == sys.stdin:
 
@@ -74,9 +137,18 @@ class Sender:
                         break
 
                     self.send_msg(data)
+                    self.add_to_queue(data)
+                    self.add_to_time_dict(data)
                     
-                    if self.out_packets == self.window_size:
+                    self.log("we have sent a message and our sender window is as follows")
+                    for tup in self.window.queue:
+                        self.log("sn: " + str(tup[0]))
+                        self.log("time: " + str(self.time_window[tup[1]['sn']]['time']))
+
+                    if self.num_out_packets == self.window_size:
                         self.waiting = True
+
+            self.check_RTO_and_resend()
 
         return
 

@@ -70,6 +70,24 @@ class Receiver:
             print(msg['data'], end='', flush=True)
 
 
+    def is_packet_corrupted(self, data):
+        check_sum = 0
+        msg = json.loads(data.decode('utf-8'))
+        for key, value in msg.items():
+            self.log("we are processing '%s'" % key)
+            if key == 'checksum':
+                self.log("we have ignored the checksum")
+                continue
+            elif type(value) is int:
+                check_sum += value
+            else:
+                value = value.encode('utf-8')
+                for char in value:
+                    check_sum += char
+
+        self.log("the calculated checksum for the packet the receiver has received with sn:  " + str(msg['sn']) + "is " + str(check_sum))
+        return check_sum == msg['checksum']
+
     def run(self):
         while True:
             socks = select.select([self.socket], [], [])[0]
@@ -84,9 +102,12 @@ class Receiver:
 
                 if msg['id'] not in self.received_data:
 
-                    self.log("we have received a data message!")
-
                     self.received_data.append(msg['id'])
+
+
+                    self.log("the result of this packet corrupt check is ----------------------")
+                    self.log(str(self.is_packet_corrupted(data)))
+
 
                     #self.check_and_put_data(msg)
 

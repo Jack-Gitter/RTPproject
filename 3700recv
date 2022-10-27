@@ -14,6 +14,7 @@ class Receiver:
         self.receiver_sn = 0; # receiver sequence number 
         self.ack_id = 0 # ack number 
         self.received_data = []
+        self.processed_sns = []
 
         self.data_buffer = queue.PriorityQueue()
 
@@ -28,11 +29,7 @@ class Receiver:
         sys.stderr.flush()
 
     def send_ack(self, msg):
-        if len(msg['data'].encode('utf-8')) + self.sender_sn == msg['sn']:
-            self.send({ "type": "ack", "sn": msg['sn'], "id":self.ack_id})
-        else:
-            self.send({ "type": "ack", "sn": self.sender_sn, "id":self.ack_id})
-
+        self.send({ "type": "ack", "sn": msg['sn'], "id":self.ack_id})
         self.ack_id+=1
 
     def grab_remote_host(self, addr):
@@ -41,9 +38,12 @@ class Receiver:
             self.remote_port = addr[1]
 
     def process_msgs_in_order(self):
+        if self.data_buffer.qsize() <= 0:
+            return
         msg = self.data_buffer.queue[0][1]
         while(len(msg['data'].encode('utf-8')) + self.sender_sn == msg['sn']):
             msg = self.data_buffer.get()[1]
+            self.processed_sns.append(msg['sn'])
             self.log('printing data with sn ' + str(msg['sn']))
             self.sender_sn = msg['sn'] 
             self.log("Received data message %s" % msg['data'])
@@ -52,46 +52,41 @@ class Receiver:
                 break
             msg = self.data_buffer.queue[0][1]
 
-    def check_and_put_data(self, msg):
-        for tup in self.data_buffer.queue:
-            for key, value in tup:
-                if key == 'id':
-                    continue
-                if msg[key] != value:
-                    return 
-
-        self.data_buffer.put((msg['sn'], msg))
-
-
-    def check_and_print(self, msg):
-        if len(msg['data'].encode('utf-8')) + self.sender_sn == msg['sn']:
-            self.sender_sn = msg['sn'] 
-            self.log("Received data message %s" % msg['data'])
-            print(msg['data'], end='', flush=True)
-
-
     def run(self):
         while True:
             socks = select.select([self.socket], [], [])[0]
             for conn in socks:
                 data, addr = conn.recvfrom(65535)
+                
+                #msg = json.loads(data.decode('utf-8'))
+                #self.log("we have received a data message with sn : " + str(msg['sn']))
 
                 # Grab the remote host/port if we don't alreadt have it
                 self.grab_remote_host(addr)
 
+                self.log("before receiving the message ----------")
                 # load the message received 
                 msg = json.loads(data.decode('utf-8'))
+                self.log("we have received data message with sn: " + str(msg['sn']))
 
                 if msg['id'] not in self.received_data:
 
+                    self.log("we are processing data message with sn: " + str(msg['sn']))
+
+                    self.log("the msg id of the message we are processing is "+ str(msg['id']))
                     self.received_data.append(msg['id'])
 
-                    #self.check_and_put_data(msg)
+                    self.log("the current data buffer contains")
+                    for tup in self.data_buffer.queue:
+                        self.log((str(tup[0])))
 
-                    #self.process_msgs_in_order()
-                    self.check_and_print(msg)
+                    if msg['sn'] not in self.processed_sns:
+                        self.data_buffer.put((msg['sn'], msg))
 
-                    # somehow regulate the amount of acks we send back
+                    self.process_msgs_in_order()
+
+                    self.log("3" + str(msg['sn']))
+
                     self.send_ack(msg)
 
         return

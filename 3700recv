@@ -58,34 +58,21 @@ class Receiver:
             for conn in socks:
                 data, addr = conn.recvfrom(65535)
                 
-                #msg = json.loads(data.decode('utf-8'))
-                #self.log("we have received a data message with sn : " + str(msg['sn']))
 
                 # Grab the remote host/port if we don't alreadt have it
                 self.grab_remote_host(addr)
 
-                self.log("before receiving the message ----------")
                 # load the message received 
                 msg = json.loads(data.decode('utf-8'))
-                self.log("we have received data message with sn: " + str(msg['sn']))
 
                 if msg['id'] not in self.received_data:
 
-                    self.log("we are processing data message with sn: " + str(msg['sn']))
-
-                    self.log("the msg id of the message we are processing is "+ str(msg['id']))
                     self.received_data.append(msg['id'])
-
-                    self.log("the current data buffer contains")
-                    for tup in self.data_buffer.queue:
-                        self.log((str(tup[0])))
 
                     if msg['sn'] not in self.processed_sns:
                         self.data_buffer.put((msg['sn'], msg))
 
                     self.process_msgs_in_order()
-
-                    self.log("3" + str(msg['sn']))
 
                     self.send_ack(msg)
 

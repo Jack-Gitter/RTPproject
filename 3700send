@@ -44,12 +44,6 @@ class Sender:
             if sn == json_ack['sn']:
                 del self.window[sn]
                 del self.time_window[sn]
-                self.log("we have just removed data message with sn " + str(sn) + " from the window. the new window is ")
-        for sn in list(self.time_window.keys()):
-            self.log(str(sn))
-            self.log(str(self.time_window[sn]['time']))
-        for sn in list(self.window.keys()):
-            self.log(str(sn))
 
     def send_msg(self, data):
         self.sender_sn += len(data.encode('utf-8'))
@@ -94,7 +88,6 @@ class Sender:
                 if key == sn:
                     self.data_number+=1
                     packet['id'] = self.data_number
-                    self.log("we are resending ----- " + str(packet))
                     self.send(packet)
                     if self.num_out_packets == self.window_size:
                         self.waiting = True
@@ -123,25 +116,15 @@ class Sender:
                         break
 
                     if self.num_out_packets == self.window_size:
-                        self.log("are we ever here? -------------------")
                         self.waiting = True
                         break
 
                     self.add_to_window(data)
                     self.add_to_time_window(data)
                     self.send_msg(data)
-                    self.log("our out packet count is at ------------ " + str(self.num_out_packets))
-                    self.log("our sender window looks like")
-                    for key, value in self.window.items():
-                        self.log(str(key))
-
-                    self.log("our time window looks like")
-                    for key, value in self.time_window.items():
-                        self.log(str(key))
 
                     if self.num_out_packets == self.window_size:
                         self.waiting = True
-
 
             self.check_RTO_and_retransmit()
 

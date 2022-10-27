@@ -73,6 +73,7 @@ class Receiver:
                 h.update(str(value).encode('utf-8'))
             else:
                 h.update(value.encode('utf-8'))
+
         msg['checksum'] = h.hexdigest()
 
     def is_valid_JSON(self, msg):
@@ -90,7 +91,6 @@ class Receiver:
                 
 
                 if not self.is_valid_JSON(data): 
-                    #self.log("dropping mangled data packet")
                     continue
 
                 msg = json.loads(data.decode('utf-8'))
@@ -100,8 +100,6 @@ class Receiver:
 
                 # Grab the remote host/port if we don't alreadt have it
                 self.grab_remote_host(addr)
-
-                # load the message received 
 
                 if msg['sn'] not in self.received_data:
 

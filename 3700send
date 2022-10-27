@@ -134,11 +134,9 @@ class Sender:
                     k, addr = conn.recvfrom(65535)
                     msg = k.decode('utf-8')
 
-                    # If the ack we have received is not a duplicate
-
                     if not self.is_valid_JSON(msg) or not self.is_valid_check_sum(msg):
-                        self.log("we are dropping a mangled ack ")
                         continue
+
                     if (self.is_unique_ack(msg)):
                         self.document_ack(msg)
                         self.advance_window(msg)

@@ -1,9 +1,9 @@
 #!/usr/bin/env -S python3 -u
 
-import argparse, socket, time, json, select, struct, sys, math
+import argparse, socket, time, json, select, struct, sys, math, hashlib
 
 # Effectively packet size that we are going to be sending
-DATA_SIZE = 1375
+DATA_SIZE = 1000 #1375
 
 class Sender:
     def __init__(self, host, port):
@@ -18,7 +18,6 @@ class Sender:
         self.num_out_packets = 0 # number of packets out in the network from sender
         self.receiver_sn = 0 # receiver sequence number
         self.sender_sn = 0; # sender sequence number
-        self.data_number = 0
         self.ack_numbers = []; # used to monitor duplicate acks
         self.window = {}
         self.time_window = {}
@@ -45,21 +44,52 @@ class Sender:
                 del self.window[sn]
                 del self.time_window[sn]
 
+    def add_check_sum(self, msg):
+        h = hashlib.blake2b()
+        for key, value in msg.items():
+            if key == 'checksum':
+                continue
+            elif key == 'sn' or key == 'id':
+                h.update(str(value).encode('utf-8'))
+            else:
+                h.update(value.encode('utf-8'))
+        msg['checksum'] = h.hexdigest()
+
+    def is_valid_JSON(self, msg):
+        try:
+            json.loads(msg)
+        except:
+            return False
+        return True
+
+    def is_valid_check_sum(self, msg):
+        json_ack = json.loads(msg)
+        h = hashlib.blake2b()
+        for key, value in json_ack.items():
+            if key != 'sn' and key != 'checksum' and key != 'id' and key != 'type' and key != 'data':
+                return False
+            if key == 'checksum':
+                continue
+            else:
+                h.update(str(value).encode('utf-8'))
+
+        return h.hexdigest() == json_ack['checksum']
+
     def send_msg(self, data):
         self.sender_sn += len(data.encode('utf-8'))
-        msg = { "type": "msg", "data": data, "sn": self.sender_sn, "id": self.data_number}
+        msg = { "type": "msg", "data": data, "sn": self.sender_sn }
+        self.add_check_sum(msg)
         self.log("Sending message '%s'" % msg)
 
         self.send(msg)
-        self.data_number+=1
         self.num_out_packets+=1
 
     def add_to_window(self, data):
-        msg = { "type": "msg", "data": data, "sn": self.sender_sn + len(data.encode('utf-8')), "id": self.data_number}
+        msg = { "type": "msg", "data": data, "sn": self.sender_sn + len(data.encode('utf-8'))}
         self.window[msg['sn']] = msg
 
     def add_to_time_window(self, data):
-        msg = { "type": "msg", "data": data, "sn": self.sender_sn + len(data.encode('utf-8')), "id": self.data_number, "time": time.time()}
+        msg = { "type": "msg", "data": data, "sn": self.sender_sn + len(data.encode('utf-8')), "time": time.time()}
         self.time_window[msg['sn']] = msg
 
     def is_unique_ack(self, ack):
@@ -73,7 +103,6 @@ class Sender:
         self.num_out_packets-=1
         self.waiting = False
 
-
     def check_RTO_and_retransmit(self):
         for packet in list(self.time_window.values()):
             if time.time() - packet['time'] > 1: 
@@ -86,9 +115,11 @@ class Sender:
             # need to update the time array
             for key, packet in list(self.window.items()):
                 if key == sn:
-                    self.data_number+=1
-                    packet['id'] = self.data_number
-                    self.send(packet)
+                    packet_copy = packet.copy()
+                    self.add_check_sum(packet_copy)
+                    # get a copy of packet that is not attached, add a checksum and send it
+                    # the current things in the window dont actually have a checksum, so we can just copy the packet, add a checksum, and send it
+                    self.send(packet_copy)
                     if self.num_out_packets == self.window_size:
                         self.waiting = True
                         return -1
@@ -104,6 +135,10 @@ class Sender:
                     msg = k.decode('utf-8')
 
                     # If the ack we have received is not a duplicate
+
+                    if not self.is_valid_JSON(msg) or not self.is_valid_check_sum(msg):
+                        self.log("we are dropping a mangled ack ")
+                        continue
                     if (self.is_unique_ack(msg)):
                         self.document_ack(msg)
                         self.advance_window(msg)

@@ -1,6 +1,6 @@
 #!/usr/bin/env -S python3 -u
 
-import argparse, socket, time, json, select, struct, sys, math, queue
+import argparse, socket, time, json, select, struct, sys, math, queue, hashlib
 
 class Receiver:
     
@@ -28,8 +28,8 @@ class Receiver:
         sys.stderr.write(message + "\n")
         sys.stderr.flush()
 
-    def send_ack(self, msg):
-        self.send({ "type": "ack", "sn": msg['sn'], "id":self.ack_id})
+    def send_ack(self, ack):
+        self.send(ack)
         self.ack_id+=1
 
     def grab_remote_host(self, addr):
@@ -52,6 +52,36 @@ class Receiver:
                 break
             msg = self.data_buffer.queue[0][1]
 
+    def is_valid_check_sum(self, msg):
+        h = hashlib.blake2b()
+        for key, value in msg.items():
+            if key != 'checksum' and key != 'sn' and key != 'data' and key != 'type':
+                return False
+            if key == 'checksum':
+                continue
+            else:
+                h.update(str(value).encode('utf-8'))
+
+        return h.hexdigest() == msg['checksum']
+
+    def add_check_sum(self, msg):
+        h = hashlib.blake2b()
+        for key, value in msg.items():
+            if key == 'checksum':
+                continue
+            elif key == 'sn' or key == 'id':
+                h.update(str(value).encode('utf-8'))
+            else:
+                h.update(value.encode('utf-8'))
+        msg['checksum'] = h.hexdigest()
+
+    def is_valid_JSON(self, msg):
+        try:
+            json.loads(msg)
+        except:
+            return False
+        return True
+
     def run(self):
         while True:
             socks = select.select([self.socket], [], [])[0]
@@ -59,22 +89,30 @@ class Receiver:
                 data, addr = conn.recvfrom(65535)
                 
 
+                if not self.is_valid_JSON(data): 
+                    #self.log("dropping mangled data packet")
+                    continue
+
+                msg = json.loads(data.decode('utf-8'))
+
+                if not self.is_valid_check_sum(msg):
+                    continue
+
                 # Grab the remote host/port if we don't alreadt have it
                 self.grab_remote_host(addr)
 
                 # load the message received 
-                msg = json.loads(data.decode('utf-8'))
 
-                if msg['id'] not in self.received_data:
+                if msg['sn'] not in self.received_data:
 
-                    self.received_data.append(msg['id'])
+                    self.received_data.append(msg['sn'])
 
-                    if msg['sn'] not in self.processed_sns:
-                        self.data_buffer.put((msg['sn'], msg))
+                    self.data_buffer.put((msg['sn'], msg))
 
-                    self.process_msgs_in_order()
-
-                    self.send_ack(msg)
+                self.process_msgs_in_order()
+                ack = { "type": "ack", "sn": msg['sn'], "id":self.ack_id}
+                self.add_check_sum(ack)
+                self.send_ack(ack)
 
         return
 

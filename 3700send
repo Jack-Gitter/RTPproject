@@ -14,7 +14,7 @@ class Sender:
         self.socket.bind(('0.0.0.0', 0))
         self.waiting = False
 
-        self.usable_window_size = 10 # max number of packets that can be out in the network
+        self.usable_window_size = 4 # max number of packets that can be out in the network
         self.num_out_packets = 0 # number of packets out in the network from sender
         self.receiver_sn = 0 # receiver sequence number
         self.sender_sn = 0; # sender sequence number

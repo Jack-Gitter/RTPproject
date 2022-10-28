@@ -14,7 +14,7 @@ class Sender:
         self.socket.bind(('0.0.0.0', 0))
         self.waiting = False
 
-        self.window_size = 4 # max number of packets that can be out in the network
+        self.usable_window_size = 4 # max number of packets that can be out in the network
         self.num_out_packets = 0 # number of packets out in the network from sender
         self.receiver_sn = 0 # receiver sequence number
         self.sender_sn = 0; # sender sequence number
@@ -82,7 +82,6 @@ class Sender:
         msg = { "type": "msg", "data": data, "sn": self.sender_sn }
         self.add_check_sum(msg)
         self.log("Sending message '%s'" % msg)
-
         self.send(msg)
         self.num_out_packets+=1
 
@@ -114,27 +113,22 @@ class Sender:
                     return
 
     def retransmit_packet(self, sn):
-            # need to update the time array
             for key, packet in list(self.window.items()):
                 if key == sn:
                     packet_copy = packet.copy()
                     self.add_check_sum(packet_copy)
-                    # get a copy of packet that is not attached, add a checksum and send it
-                    # the current things in the window dont actually have a checksum, so we can just copy the packet, add a checksum, and send it
                     self.send(packet_copy)
-                    if self.num_out_packets == self.window_size:
+                    if self.num_out_packets == self.usable_window_size:
                         self.waiting = True
                         return -1
 
     def change_RTO_time(self, ack):
         self.RTT = self.alpha * self.RTT + (1-self.alpha) * (time.time() - self.time_window[json.loads(ack)['sn']]['time'])
 
-
     def run(self):
         while True:
             sockets = [self.socket, sys.stdin] if not self.waiting else [self.socket]
             socks = select.select(sockets, [], [], 0.1)[0]
-            # its getting there, we're not waiting long enough for an ack back, then no connection or something?
             for conn in socks:
                 if conn == self.socket:
                     k, addr = conn.recvfrom(65535)
@@ -155,7 +149,7 @@ class Sender:
                     if self.ensure_all_acks_received(data):
                         break
 
-                    if self.num_out_packets == self.window_size:
+                    if self.num_out_packets == self.usable_window_size:
                         self.waiting = True
                         break
 
@@ -163,7 +157,7 @@ class Sender:
                     self.add_to_time_window(data)
                     self.send_msg(data)
 
-                    if self.num_out_packets == self.window_size:
+                    if self.num_out_packets == self.usable_window_size:
                         self.waiting = True
 
             self.check_RTO_and_retransmit()

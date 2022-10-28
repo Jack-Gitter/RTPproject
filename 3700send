@@ -3,7 +3,7 @@
 import argparse, socket, time, json, select, struct, sys, math, hashlib
 
 # Effectively packet size that we are going to be sending
-DATA_SIZE = 1000 #1375
+DATA_SIZE = 1311 #1375
 
 class Sender:
     def __init__(self, host, port):

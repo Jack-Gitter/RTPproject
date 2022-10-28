@@ -18,7 +18,7 @@ class Sender:
         self.num_out_packets = 0 # number of packets out in the network from sender
         self.receiver_sn = 0 # receiver sequence number
         self.sender_sn = 0; # sender sequence number
-        self.RTT = 1
+        self.RTT = .5
         self.alpha = .875
         self.ack_numbers = []; # used to monitor duplicate acks
         self.window = {}
@@ -106,7 +106,7 @@ class Sender:
 
     def check_RTO_and_retransmit(self):
         for packet in list(self.time_window.values()):
-            if time.time() - packet['time'] > self.RTT: 
+            if time.time() - packet['time'] > self.RTT * 2: 
                 self.time_window[packet['sn']]['time'] = time.time()
                 status = self.retransmit_packet(packet['sn'])
                 if status == -1:
@@ -156,6 +156,8 @@ class Sender:
                     self.add_to_window(data)
                     self.add_to_time_window(data)
                     self.send_msg(data)
+                    self.log("RTT is --------------")
+                    self.log(str(self.RTT))
 
                     if self.num_out_packets == self.usable_window_size:
                         self.waiting = True

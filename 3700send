@@ -102,9 +102,7 @@ class Sender:
         self.log("Received message '%s'" % ack)
         self.ack_numbers.append(json_ack['id'])
         self.num_out_packets-=1
-        self.log("we have received an ack back with sn " + str(json_ack['sn']))
         if self.num_out_packets < self.usable_window_size:
-            self.log("we are now increasing the size of our window to " + str(self.usable_window_size+1))
             self.waiting = False
             self.usable_window_size+=1
 
@@ -112,6 +110,7 @@ class Sender:
     def check_RTO_and_retransmit(self):
         for packet in list(self.time_window.values()):
             if time.time() - packet['time'] > self.RTT * 1.5: 
+                self.usable_window_size/=2
                 self.time_window[packet['sn']]['time'] = time.time()
                 status = self.retransmit_packet(packet['sn'])
                 if status == -1:
@@ -123,7 +122,7 @@ class Sender:
                     packet_copy = packet.copy()
                     self.add_check_sum(packet_copy)
                     self.send(packet_copy)
-                    if self.num_out_packets == self.usable_window_size:
+                    if self.num_out_packets >= self.usable_window_size:
                         self.waiting = True
                         return -1
 

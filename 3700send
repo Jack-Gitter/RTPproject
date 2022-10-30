@@ -110,7 +110,7 @@ class Sender:
     def check_RTO_and_retransmit(self):
         for packet in list(self.time_window.values()):
             if time.time() - packet['time'] > self.RTT * 1.5: 
-                self.usable_window_size/=2
+                self.usable_window_size/=1.5
                 self.time_window[packet['sn']]['time'] = time.time()
                 status = self.retransmit_packet(packet['sn'])
                 if status == -1:

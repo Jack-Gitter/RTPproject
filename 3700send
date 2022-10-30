@@ -14,7 +14,7 @@ class Sender:
         self.socket.bind(('0.0.0.0', 0))
         self.waiting = False
 
-        self.usable_window_size = 4 # max number of packets that can be out in the network
+        self.usable_window_size = 5 # max number of packets that can be out in the network
         self.num_out_packets = 0 # number of packets out in the network from sender
         self.receiver_sn = 0 # receiver sequence number
         self.sender_sn = 0; # sender sequence number
@@ -109,7 +109,7 @@ class Sender:
 
     def check_RTO_and_retransmit(self):
         for packet in list(self.time_window.values()):
-            if time.time() - packet['time'] > self.RTT * 1.5: 
+            if time.time() - packet['time'] > self.RTT * 1.3: 
                 self.usable_window_size/=1.5
                 self.time_window[packet['sn']]['time'] = time.time()
                 status = self.retransmit_packet(packet['sn'])

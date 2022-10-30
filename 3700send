@@ -14,11 +14,11 @@ class Sender:
         self.socket.bind(('0.0.0.0', 0))
         self.waiting = False
 
-        self.usable_window_size = 10 # max number of packets that can be out in the network
+        self.usable_window_size = 4 # max number of packets that can be out in the network
         self.num_out_packets = 0 # number of packets out in the network from sender
         self.receiver_sn = 0 # receiver sequence number
         self.sender_sn = 0; # sender sequence number
-        self.RTT = .5
+        self.RTT = 1
         self.alpha = .875
         self.ack_numbers = []; # used to monitor duplicate acks
         self.window = {}
@@ -102,7 +102,12 @@ class Sender:
         self.log("Received message '%s'" % ack)
         self.ack_numbers.append(json_ack['id'])
         self.num_out_packets-=1
-        self.waiting = False
+        self.log("we have received an ack back with sn " + str(json_ack['sn']))
+        if self.num_out_packets < self.usable_window_size:
+            self.log("we are now increasing the size of our window to " + str(self.usable_window_size+1))
+            self.waiting = False
+            self.usable_window_size+=1
+
 
     def check_RTO_and_retransmit(self):
         for packet in list(self.time_window.values()):
@@ -142,6 +147,9 @@ class Sender:
                         self.change_RTO_time(msg)
                         self.advance_window(msg)
 
+                        #self.log("we have received a unique ack and are changing the window size")
+                        #self.log("the new window size is " + str(self.usable_window_size))
+
                 elif conn == sys.stdin:
 
                     data = sys.stdin.read(DATA_SIZE)
@@ -149,17 +157,15 @@ class Sender:
                     if self.ensure_all_acks_received(data):
                         break
 
-                    if self.num_out_packets == self.usable_window_size:
+                    if self.num_out_packets == self.usable_window_size or self.num_out_packets > self.usable_window_size:
                         self.waiting = True
                         break
 
                     self.add_to_window(data)
                     self.add_to_time_window(data)
                     self.send_msg(data)
-                    self.log("RTT is --------------")
-                    self.log(str(self.RTT))
 
-                    if self.num_out_packets == self.usable_window_size:
+                    if self.num_out_packets == self.usable_window_size or self.num_out_packets > self.usable_window_size:
                         self.waiting = True
 
             self.check_RTO_and_retransmit()

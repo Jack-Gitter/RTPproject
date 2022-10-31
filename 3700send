@@ -21,8 +21,10 @@ class Sender:
         self.RTT = 1
         self.alpha = .875
         self.ack_numbers = []; # used to monitor duplicate acks
+        self.ackd_packets = []
         self.window = {}
         self.time_window = {}
+        self.change_window_size = False
 
     def log(self, message):
         sys.stderr.write(message + "\n")
@@ -101,7 +103,9 @@ class Sender:
         json_ack = json.loads(ack)
         self.log("Received message '%s'" % ack)
         self.ack_numbers.append(json_ack['id'])
-        self.num_out_packets-=1
+        if json_ack['sn'] not in self.ackd_packets:
+            self.num_out_packets-=1
+            self.ackd_packets.append(json_ack['sn'])
         if self.num_out_packets < self.usable_window_size:
             self.waiting = False
             self.usable_window_size+=1
@@ -109,18 +113,31 @@ class Sender:
 
     def check_RTO_and_retransmit(self):
         for packet in list(self.time_window.values()):
-            if time.time() - packet['time'] > self.RTT * 1.5: 
-                self.usable_window_size/=1.5
-                self.time_window[packet['sn']]['time'] = time.time()
-                status = self.retransmit_packet(packet['sn'])
-                if status == -1:
-                    return
+            if time.time() - packet['time'] >= self.RTT * 1.5: 
+                if 'processed' not in packet or packet['processed'] == False:
+                    packet['processed'] = True
+                    self.num_out_packets-=1
+                    if self.usable_window_size/1.5 >= 1:
+                        self.usable_window_size/=1.5
+                    self.waiting = True
+                    self.log("usable window size and num out packets")
+                    self.log(str(self.usable_window_size))
+                    self.log(str(self.num_out_packets))
+                    continue
+
+                if self.num_out_packets < self.usable_window_size:
+                    packet['processed'] = False
+                    self.time_window[packet['sn']]['time'] = time.time()
+                    status = self.retransmit_packet(packet['sn'])
+                    if status == -1:
+                        return
 
     def retransmit_packet(self, sn):
             for key, packet in list(self.window.items()):
                 if key == sn:
                     packet_copy = packet.copy()
                     self.add_check_sum(packet_copy)
+                    self.num_out_packets+=1
                     self.send(packet_copy)
                     if self.num_out_packets >= self.usable_window_size:
                         self.waiting = True

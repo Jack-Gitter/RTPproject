@@ -2,6 +2,7 @@
 
 import argparse, socket, time, json, select, struct, sys, math, queue, hashlib
 
+# class to represnt a receiver
 class Receiver:
     
     def __init__(self):
@@ -13,21 +14,24 @@ class Receiver:
         self.sender_sn = 0; # sender sequence number
         self.receiver_sn = 0; # receiver sequence number 
         self.ack_id = 0 # ack number 
-        self.received_data = []
-        self.processed_sns = []
+        self.received_data = [] # list of sns of data we have received
+        self.processed_sns = [] # list of sns of data that we have processed (printed out)
 
-        self.data_buffer = queue.PriorityQueue()
+        self.data_buffer = queue.PriorityQueue() # a buffer of messages received by the sender, buffered until in order
 
         self.remote_host = None
         self.remote_port = None
 
+    # sends a message back to the sender
     def send(self, message):
         self.socket.sendto(json.dumps(message).encode('utf-8'), (self.remote_host, self.remote_port))
 
+    # logs to the console
     def log(self, message):
         sys.stderr.write(message + "\n")
         sys.stderr.flush()
 
+    # sends a message back to the sender
     def send_ack(self, ack):
         self.send(ack)
         self.ack_id+=1
@@ -37,6 +41,7 @@ class Receiver:
             self.remote_host = addr[0]
             self.remote_port = addr[1]
 
+    # Process all data messages that have just been received or have been buffered that are in order
     def process_msgs_in_order(self):
         if self.data_buffer.qsize() <= 0:
             return
@@ -52,6 +57,7 @@ class Receiver:
                 break
             msg = self.data_buffer.queue[0][1]
 
+    # determines if a packet has been mangled
     def is_valid_check_sum(self, msg):
         h = hashlib.blake2b()
         for key, value in msg.items():
@@ -64,6 +70,7 @@ class Receiver:
 
         return h.hexdigest() == msg['checksum']
 
+    # adds a check sum to a ack
     def add_check_sum(self, msg):
         h = hashlib.blake2b()
         for key, value in msg.items():
@@ -76,6 +83,7 @@ class Receiver:
 
         msg['checksum'] = h.hexdigest()
 
+    # determines if a packet is in valid json format
     def is_valid_JSON(self, msg):
         try:
             json.loads(msg)
@@ -83,6 +91,7 @@ class Receiver:
             return False
         return True
 
+    # runs the receiver 
     def run(self):
         while True:
             socks = select.select([self.socket], [], [])[0]
